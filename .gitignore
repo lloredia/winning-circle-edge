@@ -1,0 +1,8 @@
+.env
+node_modules/
+__pycache__/
+*.pyc
+data/odds/
+data/picks/
+data/history/
+.DS_Store

@@ -1,0 +1,6 @@
+.env
+.git
+node_modules
+__pycache__
+data
+.DS_Store

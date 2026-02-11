@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  # === API SERVER: Serves picks JSON to the frontend ===
+  api-server:
+    build: ./services/api-server
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATA_DIR=/app/data
+      - PORT=3001
+    restart: unless-stopped
+
+  # === FRONTEND: React dashboard via Vite preview ===
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api-server
+    restart: unless-stopped
+
+  # === SCHEDULER: Runs pipeline daily at 10 AM CT ===
+  scheduler:
+    build:
+      context: .
+      dockerfile: services/scheduler/Dockerfile
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ODDS_API_KEY=${ODDS_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SPORTS=${SPORTS:-basketball_nba,basketball_ncaab,soccer_epl}
+      - DATA_DIR=/app/data
+      - TZ=America/Chicago
+    depends_on:
+      - api-server
+    restart: unless-stopped

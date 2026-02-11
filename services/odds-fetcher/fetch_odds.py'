@@ -1,0 +1,62 @@
+#!/bin/bash
+# ============================================================
+# Step 2b: Create supporting files + test the odds fetcher
+# Run this from inside your winning-circle-edge/ folder
+# ============================================================
+
+cd ~/winning-circle-edge  # adjust if your project is elsewhere
+
+# ----- 1. Create requirements.txt -----
+cat > services/odds-fetcher/requirements.txt << 'EOF'
+requests==2.31.0
+EOF
+
+# ----- 2. Create Dockerfile -----
+cat > services/odds-fetcher/Dockerfile << 'EOF'
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY fetch_odds.py .
+
+CMD ["python", "fetch_odds.py"]
+EOF
+
+# ----- 3. Copy the fetch_odds.py file -----
+# (Copy the code from the Step 2 artifact into this file)
+# If you haven't already:
+#   nano services/odds-fetcher/fetch_odds.py
+#   → paste the Python code → save
+
+# ----- 4. TEST IT LOCALLY (no Docker needed yet) -----
+echo ""
+echo "=== TESTING ODDS FETCHER LOCALLY ==="
+echo ""
+
+# Install the dependency
+pip3 install requests
+
+# Load your API key from .env and run
+export $(grep -v '^#' .env | grep ODDS_API_KEY | xargs)
+export SPORTS="basketball_nba,soccer_epl,basketball_ncaab"
+export DATA_DIR="./data"
+
+python3 services/odds-fetcher/fetch_odds.py
+
+# ----- 5. CHECK THE OUTPUT -----
+echo ""
+echo "=== Check your output file ==="
+TODAY=$(date +%Y-%m-%d)
+echo "File: data/odds/$TODAY.json"
+echo ""
+echo "Preview (first 50 lines):"
+head -50 "data/odds/$TODAY.json"
+
+echo ""
+echo "=== ✅ Step 2 Complete ==="
+echo ""
+echo "If you see games listed above, the odds fetcher is working!"
+echo "Next: Step 3 — Analysis Engine (Claude API generates picks)"
