@@ -1,4 +1,5 @@
-version: "3.8"
+# Run with: docker compose up -d
+# Stack auto-restarts on failure. Use scripts/ for auto-start on boot.
 
 services:
   # === API SERVER: Serves picks JSON to the frontend ===
@@ -13,9 +14,12 @@ services:
       - PORT=3001
     restart: unless-stopped
 
-  # === FRONTEND: React dashboard via Vite preview ===
+  # === FRONTEND: React dashboard ===
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=http://localhost:3001
     ports:
       - "8080:8080"
     depends_on:
@@ -35,6 +39,9 @@ services:
       - SPORTS=${SPORTS:-basketball_nba,basketball_ncaab,soccer_epl}
       - DATA_DIR=/app/data
       - TZ=America/Chicago
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - DASHBOARD_URL=${DASHBOARD_URL}
     depends_on:
       - api-server
     restart: unless-stopped

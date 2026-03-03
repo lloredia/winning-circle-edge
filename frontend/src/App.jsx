@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 
-const API_URL = "http://localhost:3001";
+// Use same host:3001 when on local network (e.g. Raspberry Pi at 192.168.x.x)
+const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : `http://${window.location.hostname}:3001`);
 const STAKE = 10;
 
 const riskColors = { "LOW": "#22c55e", "LOW-MEDIUM": "#84cc16", "MEDIUM": "#eab308", "MEDIUM-HIGH": "#f97316", "HIGH": "#ef4444" };

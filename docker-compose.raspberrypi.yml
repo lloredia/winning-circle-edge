@@ -1,0 +1,17 @@
+# Raspberry Pi override — use: docker compose -f docker-compose.yml -f docker-compose.raspberrypi.yml up -d
+# For Pi 4/5 (64-bit). Pi 3: change platform to linux/arm/v7
+
+services:
+  api-server:
+    platform: linux/arm64
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=
+        - NODE_OPTIONS=--max-old-space-size=512
+    platform: linux/arm64
+
+  scheduler:
+    platform: linux/arm64

@@ -6,7 +6,7 @@ echo "   Timezone: $TZ"
 echo "   Sports: $SPORTS"
 
 # Write environment variables to a file so cron can access them
-printenv | grep -E '^(ODDS_API_KEY|ANTHROPIC_API_KEY|SPORTS|DATA_DIR|TZ)=' > /app/.env.cron
+printenv | grep -E '^(ODDS_API_KEY|ANTHROPIC_API_KEY|SPORTS|DATA_DIR|TZ|TELEGRAM_BOT_TOKEN|TELEGRAM_CHAT_ID|DASHBOARD_URL|PIPELINE_MAX_RETRIES|PIPELINE_RETRY_DELAY)=' > /app/.env.cron
 
 # Create the cron job — runs daily at 10:00 AM (in container timezone)
 echo "0 10 * * * cd /app && export \$(cat /app/.env.cron | xargs) && /bin/bash /app/run_pipeline.sh >> /var/log/edge.log 2>&1" > /etc/cron.d/edge-cron

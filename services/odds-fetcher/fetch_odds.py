@@ -98,13 +98,24 @@ def parse_odds(raw_games, sport_key):
         favorite = None
         favorite_odds = None
 
-        if h2h["home"] and h2h["away"]:
-            if h2h["home"] > h2h["away"]:
-                underdog, underdog_odds = home, h2h["home"]
-                favorite, favorite_odds = away, h2h["away"]
-            else:
-                underdog, underdog_odds = away, h2h["away"]
-                favorite, favorite_odds = home, h2h["home"]
+        # Underdog = longest odds (home, away, or Draw for soccer)
+        # Favorite = shortest odds among home/away (for 2-way or 3-way)
+        candidates = []
+        if h2h["home"] is not None:
+            candidates.append((home, h2h["home"]))
+        if h2h["away"] is not None:
+            candidates.append((away, h2h["away"]))
+        if h2h["draw"] is not None:
+            candidates.append(("Draw", h2h["draw"]))
+
+        if candidates:
+            by_odds = sorted(candidates, key=lambda x: (x[1] or 0), reverse=True)
+            underdog, underdog_odds = by_odds[0]
+            # Favorite = shortest odds among home/away only (exclude Draw)
+            team_odds = [(n, o) for n, o in candidates if n in (home, away) and o is not None]
+            if team_odds:
+                team_odds.sort(key=lambda x: x[1])
+                favorite, favorite_odds = team_odds[0]
 
         parsed.append({
             "sport_key": sport_key,

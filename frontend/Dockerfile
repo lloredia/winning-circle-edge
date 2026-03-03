@@ -1,5 +1,9 @@
 FROM node:20-slim
 WORKDIR /app
+ARG VITE_API_URL
+ARG NODE_OPTIONS
+ENV VITE_API_URL=${VITE_API_URL}
+ENV NODE_OPTIONS=${NODE_OPTIONS}
 COPY package.json package-lock.json ./
 RUN npm install
 COPY . .

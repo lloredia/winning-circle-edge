@@ -15,6 +15,17 @@ function todayStr() {
   return new Date().toISOString().split("T")[0];
 }
 
+// Safe JSON file read — returns null on error
+function readJsonSafe(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error(`Failed to read ${filePath}:`, err.message);
+    return null;
+  }
+}
+
 // GET /api/picks/today — returns today's generated picks
 app.get("/api/picks/today", (req, res) => {
   const today = todayStr();
@@ -28,7 +39,8 @@ app.get("/api/picks/today", (req, res) => {
     });
   }
 
-  const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  const data = readJsonSafe(filePath);
+  if (!data) return res.status(500).json({ error: "Failed to load picks data" });
   res.json(data);
 });
 
@@ -46,7 +58,8 @@ app.get("/api/picks/:date", (req, res) => {
     return res.status(404).json({ error: `No picks found for ${date}` });
   }
 
-  const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  const data = readJsonSafe(filePath);
+  if (!data) return res.status(500).json({ error: "Failed to load picks data" });
   res.json(data);
 });
 
@@ -59,7 +72,8 @@ app.get("/api/odds/today", (req, res) => {
     return res.status(404).json({ error: "No odds fetched yet today", date: today });
   }
 
-  const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  const data = readJsonSafe(filePath);
+  if (!data) return res.status(500).json({ error: "Failed to load odds data" });
   res.json(data);
 });
 
@@ -68,25 +82,32 @@ app.get("/api/history", (req, res) => {
   const historyDir = path.join(DATA_DIR, "history");
 
   if (!fs.existsSync(historyDir)) {
-    return res.json({ dates: [] });
+    return res.json({ dates: [], total: 0 });
   }
 
-  const files = fs.readdirSync(historyDir)
-    .filter((f) => f.endsWith(".json"))
-    .map((f) => f.replace(".json", ""))
-    .sort()
-    .reverse();
-
-  res.json({ dates: files, total: files.length });
+  try {
+    const files = fs.readdirSync(historyDir)
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => f.replace(".json", ""))
+      .sort()
+      .reverse();
+    res.json({ dates: files, total: files.length });
+  } catch (err) {
+    console.error("History read error:", err.message);
+    res.status(500).json({ error: "Failed to read history", dates: [], total: 0 });
+  }
 });
 
 // GET /api/health — health check
 app.get("/api/health", (req, res) => {
+  const dataDirExists = fs.existsSync(DATA_DIR);
   res.json({
     status: "ok",
     service: "Winning Circle × UNDERDOG EDGE™ API",
     date: todayStr(),
-    uptime: process.uptime(),
+    uptime: Math.floor(process.uptime()),
+    data_dir: DATA_DIR,
+    data_dir_accessible: dataDirExists,
   });
 });
 
