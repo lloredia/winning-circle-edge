@@ -11,6 +11,18 @@ DATE=$(date -u +%Y-%m-%d)
 DIR="$(cd "$(dirname "$0")" && pwd)"
 MAX_RETRIES=${PIPELINE_MAX_RETRIES:-3}
 RETRY_DELAY=${PIPELINE_RETRY_DELAY:-45}
+PIPELINE_FAILED=0
+
+# On failure: send Telegram alert if configured
+cleanup() {
+  if [ "$PIPELINE_FAILED" -eq 1 ] && [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+    ALERT_SCRIPT=""
+    [ -f "$DIR/alert_pipeline_failure.py" ] && ALERT_SCRIPT="$DIR/alert_pipeline_failure.py"
+    [ -z "$ALERT_SCRIPT" ] && [ -f "$DIR/services/scheduler/alert_pipeline_failure.py" ] && ALERT_SCRIPT="$DIR/services/scheduler/alert_pipeline_failure.py"
+    [ -n "$ALERT_SCRIPT" ] && python3 "$ALERT_SCRIPT" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
 
 # Retry a command up to MAX_RETRIES times
 run_with_retry() {
@@ -54,7 +66,7 @@ if [ -z "$FETCH_SCRIPT" ]; then
   exit 1
 fi
 
-run_with_retry "1/3" python3 "$FETCH_SCRIPT"
+run_with_retry "1/3" python3 "$FETCH_SCRIPT" || { PIPELINE_FAILED=1; exit 1; }
 
 echo ""
 
@@ -72,18 +84,28 @@ if [ -z "$PICKS_SCRIPT" ]; then
   exit 1
 fi
 
-run_with_retry "2/3" python3 "$PICKS_SCRIPT"
+run_with_retry "2/3" python3 "$PICKS_SCRIPT" || { PIPELINE_FAILED=1; exit 1; }
 
 echo ""
 
-# Step 3: Send to Telegram (no retry — non-critical)
-echo "[3/3] Sending to Telegram..."
-if [ -f "$DIR/notify_telegram.py" ]; then
-    python3 "$DIR/notify_telegram.py" || echo "⚠️  Telegram notification failed"
-elif [ -f "$DIR/services/scheduler/notify_telegram.py" ]; then
-    python3 "$DIR/services/scheduler/notify_telegram.py" || echo "⚠️  Telegram notification failed"
-else
-    echo "⚠️  notify_telegram.py not found, skipping"
+# Step 3: Send notifications (no retry — non-critical)
+echo "[3/3] Sending notifications..."
+NOTIFY_SCRIPT=""
+if [ -f "$DIR/services/scheduler/notify_telegram.py" ]; then
+  NOTIFY_SCRIPT="$DIR/services/scheduler/notify_telegram.py"
+elif [ -f "$DIR/notify_telegram.py" ]; then
+  NOTIFY_SCRIPT="$DIR/notify_telegram.py"
+fi
+if [ -n "$NOTIFY_SCRIPT" ]; then
+  python3 "$NOTIFY_SCRIPT" || echo "⚠️  Telegram failed"
+fi
+
+DISCORD_SCRIPT=""
+if [ -f "$DIR/services/scheduler/notify_discord.py" ]; then
+  DISCORD_SCRIPT="$DIR/services/scheduler/notify_discord.py"
+fi
+if [ -n "$DISCORD_SCRIPT" ]; then
+  python3 "$DISCORD_SCRIPT" || echo "⚠️  Discord failed"
 fi
 
 echo ""
@@ -91,5 +113,4 @@ echo "✅ =============================================="
 echo "   Pipeline complete!"
 echo "   Dashboard: http://localhost:8080"
 echo "   API:       http://localhost:3001/api/picks/today"
-echo "   Telegram:  ✅ Sent"
 echo "✅ =============================================="

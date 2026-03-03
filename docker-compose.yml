@@ -12,6 +12,7 @@ services:
     environment:
       - DATA_DIR=/app/data
       - PORT=3001
+      - API_KEY=${API_KEY}
     restart: unless-stopped
 
   # === FRONTEND: React dashboard ===
@@ -20,6 +21,7 @@ services:
       context: ./frontend
       args:
         - VITE_API_URL=http://localhost:3001
+        - VITE_API_KEY=${API_KEY}
     ports:
       - "8080:8080"
     depends_on:
@@ -42,6 +44,7 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - DASHBOARD_URL=${DASHBOARD_URL}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
     depends_on:
       - api-server
     restart: unless-stopped

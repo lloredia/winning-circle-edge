@@ -6,9 +6,55 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3001;
 const DATA_DIR = process.env.DATA_DIR || "/app/data";
+const API_KEY = process.env.API_KEY || "";
+const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_MS || "60000", 10); // 1 min default
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 min
+const RATE_LIMIT_MAX = 120; // requests per window
+
+// In-memory cache
+const cache = new Map();
+function getCached(key) {
+  const entry = cache.get(key);
+  if (!entry || Date.now() > entry.expires) return null;
+  return entry.data;
+}
+function setCache(key, data) {
+  cache.set(key, { data, expires: Date.now() + CACHE_TTL_MS });
+}
+
+// Rate limiting (simple in-memory)
+const rateLimit = new Map();
+function checkRateLimit(ip) {
+  const now = Date.now();
+  let bucket = rateLimit.get(ip);
+  if (!bucket || now - bucket.resetAt > RATE_LIMIT_WINDOW_MS) {
+    bucket = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+    rateLimit.set(ip, bucket);
+  }
+  bucket.count++;
+  return bucket.count <= RATE_LIMIT_MAX;
+}
+
+// Optional API key auth (skip /api/health for load balancers)
+function authMiddleware(req, res, next) {
+  if (req.originalUrl?.includes("/health")) return next();
+  if (!API_KEY) return next();
+  const key = req.headers["x-api-key"] || req.headers["authorization"]?.replace("Bearer ", "");
+  if (key === API_KEY) return next();
+  res.status(401).json({ error: "Invalid or missing API key" });
+}
 
 app.use(cors());
 app.use(express.json());
+
+// Rate limit all API routes
+app.use("/api", (req, res, next) => {
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  if (!checkRateLimit(ip)) return res.status(429).json({ error: "Too many requests" });
+  next();
+});
+
+app.use("/api", authMiddleware);
 
 // Get today's date in YYYY-MM-DD format (UTC)
 function todayStr() {
@@ -26,11 +72,13 @@ function readJsonSafe(filePath) {
   }
 }
 
-// GET /api/picks/today — returns today's generated picks
+// GET /api/picks/today — returns today's generated picks (cached)
 app.get("/api/picks/today", (req, res) => {
   const today = todayStr();
-  const filePath = path.join(DATA_DIR, "picks", `${today}.json`);
+  const cached = getCached(`picks:${today}`);
+  if (cached) return res.json(cached);
 
+  const filePath = path.join(DATA_DIR, "picks", `${today}.json`);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({
       error: "No picks generated yet today",
@@ -38,42 +86,44 @@ app.get("/api/picks/today", (req, res) => {
       hint: "Run the pipeline: python3 generate_picks.py",
     });
   }
-
   const data = readJsonSafe(filePath);
   if (!data) return res.status(500).json({ error: "Failed to load picks data" });
+  setCache(`picks:${today}`, data);
   res.json(data);
 });
 
-// GET /api/picks/:date — returns picks for a specific date
+// GET /api/picks/:date — returns picks for a specific date (cached)
 app.get("/api/picks/:date", (req, res) => {
   const date = req.params.date;
-
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
   }
+  const cached = getCached(`picks:${date}`);
+  if (cached) return res.json(cached);
 
   const filePath = path.join(DATA_DIR, "picks", `${date}.json`);
-
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: `No picks found for ${date}` });
   }
-
   const data = readJsonSafe(filePath);
   if (!data) return res.status(500).json({ error: "Failed to load picks data" });
+  setCache(`picks:${date}`, data);
   res.json(data);
 });
 
-// GET /api/odds/today — returns today's raw odds
+// GET /api/odds/today — returns today's raw odds (cached)
 app.get("/api/odds/today", (req, res) => {
   const today = todayStr();
-  const filePath = path.join(DATA_DIR, "odds", `${today}.json`);
+  const cached = getCached(`odds:${today}`);
+  if (cached) return res.json(cached);
 
+  const filePath = path.join(DATA_DIR, "odds", `${today}.json`);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: "No odds fetched yet today", date: today });
   }
-
   const data = readJsonSafe(filePath);
   if (!data) return res.status(500).json({ error: "Failed to load odds data" });
+  setCache(`odds:${today}`, data);
   res.json(data);
 });
 

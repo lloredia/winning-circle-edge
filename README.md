@@ -75,6 +75,9 @@ cd frontend && npm run dev
 | `TZ` | No | Timezone for scheduler (default: `America/Chicago`) |
 | `PIPELINE_MAX_RETRIES` | No | Retries for fetch/generate steps (default: 3) |
 | `PIPELINE_RETRY_DELAY` | No | Seconds between retries (default: 45) |
+| `API_KEY` | No | When set, require X-API-Key header on API (use with VITE_API_KEY in frontend) |
+| `DISCORD_WEBHOOK_URL` | No | Discord webhook for picks notifications |
+| `CACHE_TTL_MS` | No | API cache TTL in ms (default: 60000) |
 
 ## API Endpoints
 

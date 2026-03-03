@@ -1,8 +1,16 @@
 import { useState, useEffect } from "react";
+import LoadingSkeleton from "./LoadingSkeleton.jsx";
 
 // Use same host:3001 when on local network (e.g. Raspberry Pi at 192.168.x.x)
 const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : `http://${window.location.hostname}:3001`);
+const API_KEY = import.meta.env.VITE_API_KEY || "";
 const STAKE = 10;
+
+function apiFetch(path) {
+  const opts = {};
+  if (API_KEY) opts.headers = { "X-API-Key": API_KEY };
+  return fetch(`${API_URL}${path}`, opts);
+}
 
 const riskColors = { "LOW": "#22c55e", "LOW-MEDIUM": "#84cc16", "MEDIUM": "#eab308", "MEDIUM-HIGH": "#f97316", "HIGH": "#ef4444" };
 const typeColors = {
@@ -25,42 +33,86 @@ function calcParlay(legs) {
   };
 }
 
+// Format date for display
+function formatDate(d) {
+  const [y, m, day] = d.split("-");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${months[parseInt(m, 10) - 1]} ${parseInt(day, 10)}, ${y}`;
+}
+
+// Export picks to CSV
+function exportCSV(picks, activeLegs) {
+  const rows = [["Date", "League", "Pick", "Odds", "Implied", "Risk", "Game", "Edge"]];
+  activeLegs.forEach((l) => rows.push([picks.date, l.type, l.pick, l.odds, l.implied, l.risk, l.game, l.edge]));
+  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `underdog-edge-${picks.date}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 export default function App() {
   const [picks, setPicks] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState([]);
   const [expanded, setExpanded] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
 
-  useEffect(() => {
-    fetch(`${API_URL}/api/picks/today`)
+  const loadPicks = (date) => {
+    setLoading(true);
+    setError(null);
+    setPicks(null); // Show skeleton while loading
+    apiFetch(`/api/picks/${date}`)
       .then((r) => {
-        if (!r.ok) throw new Error(`No picks yet (${r.status})`);
+        if (!r.ok) throw new Error(r.status === 404 ? `No picks for ${date}` : `Error ${r.status}`);
         return r.json();
       })
       .then((data) => {
         setPicks(data);
-        setSelected(data.legs.map((_, i) => i));
+        setSelected(data.legs?.map((_, i) => i) || []);
+        setSelectedDate(date);
         setLoading(false);
       })
       .catch((e) => {
         setError(e.message);
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    apiFetch("/api/history").then((r) => r.json()).then((d) => setHistory(d.dates || []));
   }, []);
 
-  if (loading)
-    return (
-      <div style={{ minHeight: "100vh", background: "#050505", color: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace", fontSize: 18 }}>
-        🔥 Loading UNDERDOG EDGE™ picks...
-      </div>
-    );
+  useEffect(() => {
+    const today = new Date().toISOString().split("T")[0];
+    loadPicks(today);
+  }, []);
 
-  if (error)
+  if (loading && !picks)
+    return <LoadingSkeleton />;
+
+  if (error && !picks)
     return (
-      <div style={{ minHeight: "100vh", background: "#050505", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace", fontSize: 16, padding: 40, textAlign: "center" }}>
+      <div style={{ minHeight: "100vh", background: "#050505", color: "#ef4444", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "monospace", fontSize: 16, padding: 40, textAlign: "center" }}>
         ❌ {error}<br /><br />
         <span style={{ color: "#64748b", fontSize: 13 }}>Make sure the API server is running:<br />DATA_DIR=./data node services/api-server/server.js</span>
+        {history.length > 0 && (
+          <div style={{ marginTop: 24 }}>
+            <select
+              onChange={(e) => { const v = e.target.value; if (v) loadPicks(v); }}
+              style={{ padding: "8px 16px", fontSize: 14, background: "#1e293b", color: "#fbbf24", border: "1px solid #fbbf2444", borderRadius: 6, cursor: "pointer" }}
+            >
+              <option value="">View past picks...</option>
+              {history.map((d) => (
+                <option key={d} value={d}>{formatDate(d)}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
     );
 
@@ -97,15 +149,40 @@ export default function App() {
         </div>
       </div>
 
-      {/* UNDERDOG EDGE SUBHEADER */}
+      {/* UNDERDOG EDGE SUBHEADER + DATE PICKER + EXPORT */}
       <div style={{ background: "linear-gradient(90deg, #dc2626 0%, #b91c1c 40%, #991b1b 70%, #7f1d1d 100%)", padding: "14px 24px", borderBottom: "1px solid #fbbf2444" }}>
-        <div style={{ maxWidth: 920, margin: "0 auto", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 22 }}>🔥</span>
-          <div>
-            <h2 style={{ fontSize: 16, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase", margin: 0, color: "#fff" }}>UNDERDOG EDGE™</h2>
-            <p style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#fbbf24", margin: 0, fontWeight: 700 }}>
-              LONGSHOT PARLAY BUILDER • {sports.join(" + ")} • {picks.date}
-            </p>
+        <div style={{ maxWidth: 920, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 22 }}>🔥</span>
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase", margin: 0, color: "#fff" }}>UNDERDOG EDGE™</h2>
+              <p style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "#fbbf24", margin: 0, fontWeight: 700 }}>
+                LONGSHOT PARLAY BUILDER • {sports.join(" + ")} • {picks.date}
+              </p>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {(() => {
+              const today = new Date().toISOString().split("T")[0];
+              const dates = [...new Set([today, ...(history || []), picks?.date])].filter(Boolean).sort().reverse();
+              return dates.length > 0 && (
+                <select
+                  value={selectedDate || picks.date}
+                  onChange={(e) => loadPicks(e.target.value)}
+                  style={{ padding: "6px 12px", fontSize: 12, background: "#1e293b", color: "#fbbf24", border: "1px solid #fbbf2444", borderRadius: 6, cursor: "pointer" }}
+                >
+                  {dates.map((d) => (
+                    <option key={d} value={d}>{d === today ? "Today" : formatDate(d)}</option>
+                  ))}
+                </select>
+              );
+            })()}
+            <button
+              onClick={() => exportCSV(picks, activeLegs)}
+              style={{ padding: "6px 12px", fontSize: 12, background: "#fbbf24", color: "#0a0a0a", border: "none", borderRadius: 6, fontWeight: 700, cursor: "pointer" }}
+            >
+              📥 Export CSV
+            </button>
           </div>
         </div>
       </div>
